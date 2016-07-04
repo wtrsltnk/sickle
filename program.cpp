@@ -98,14 +98,15 @@ namespace im
     class Control
     {
     protected:
-        Control(sUIID id) : id(id), text(emptyString) { }
-        Control(const char* a, int b = 0) : id(sUIID(a, b)), rect(glm::vec4(0.0f, 0.0f, 100.0f, 25.0f)), text(emptyString) { }
+        Control(sUIID id) : id(id), text(emptyString), visible(true) { }
+        Control(const char* a, int b = 0) : id(sUIID(a, b)), rect(glm::vec4(0.0f, 0.0f, 100.0f, 25.0f)), text(emptyString), visible(true) { }
         virtual ~Control() { }
 
     public:
         sUIID id;
         glm::vec4 rect;
         std::string& text;
+        bool visible;
 
         virtual void Render() const = 0;
 
@@ -127,9 +128,17 @@ namespace im
     class Button : public Control
     {
     public:
-        Button(sUIID id) : Control(id) { }
-        Button(const char* a, int b = 0) : Control(a, b) { }
+        Button(sUIID id) : Control(id), icon(-1) { }
+        Button(const char* a, int b = 0) : Control(a, b), icon(-1) { }
         virtual ~Button() { }
+
+        int icon;
+
+        Control& Icon(int icon)
+        {
+            this->icon = icon;
+            return *this;
+        }
 
         virtual void Render() const
         {
@@ -155,10 +164,18 @@ namespace im
 
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-            auto bounds = monaco.TextBounds(text);
-            auto textwidth = bounds.z - bounds.x;
-            auto ft = glm::translate(ortho, glm::vec3(rect.x + (rect.z - textwidth)/2.0f, rect.y + monaco.fontsize, 0.0f));
-            monaco.PrintText(ft, text, glm::vec4(0.0f));
+            if (this->icon == -1)
+            {
+                auto bounds = monaco.TextBounds(text);
+                auto textwidth = bounds.z - bounds.x;
+                auto ft = glm::translate(ortho, glm::vec3(rect.x + (rect.z - textwidth)/2.0f, rect.y + monaco.fontsize, 0.0f));
+                monaco.PrintText(ft, text, glm::vec4(0.0f));
+            }
+            else
+            {
+                auto ft = glm::translate(ortho, glm::vec3(rect.x, rect.y, 0.0f));
+                materialicons.PrintIcon(ft, this->icon);
+            }
         }
     };
 
@@ -193,10 +210,103 @@ namespace im
         }
     }
 
-    bool DoButton(sUIID id, const std::string& text, const glm::vec4& rect)
+    class Container
     {
-        if (uistate.mousex >= rect.x && uistate.mousex <= (rect.x+rect.z)
-                && uistate.mousey >= rect.y && uistate.mousey <= (rect.y+rect.w))
+        static Container* currentContainer;
+        int positionNextChild;
+        Container* parent;
+    public:
+        Container(int w, int h, bool horizontal = true, int margin = 5);
+        virtual ~Container();
+        static glm::vec2 GetChildPosition(int w, int h);
+        static Container* Current();
+
+        bool directionHorizontal;
+        int width;
+        int height;
+        int margin;
+
+        operator bool () { return true; }
+    };
+
+    Container* Container::currentContainer = nullptr;
+
+    Container::Container(int w, int h, bool horizontal, int m)
+        : width(w), height(h), directionHorizontal(horizontal), margin(m),
+          parent(Container::currentContainer), positionNextChild(0)
+    {
+        auto pos = Container::GetChildPosition(w, h);
+
+        if (parent == nullptr)
+        {
+            if (w == -1) w = uistate.windowx;
+            if (h == -1) h = uistate.windowy;
+        }
+        else
+        {
+            if (w == -1) w = parent->width;
+            if (h == -1) h = parent->height;
+        }
+
+        Container::currentContainer = this;
+        glUseProgram(iProgram);
+
+        glEnableVertexAttribArray(GLuint(a_vertex));
+        glVertexAttribPointer(GLuint(a_vertex), 3, GL_FLOAT, GL_FALSE, 0, vertices);
+
+        auto ortho = glm::ortho(0.0f, float(uistate.windowx), float(uistate.windowy), 0.0f, -10.0f, 10.0f);
+        auto t = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
+        auto s = glm::scale(glm::mat4(1.0f), glm::vec3(w, h, 0.0f));
+
+        glUniformMatrix4fv(u_proj, 1, false, glm::value_ptr(ortho));
+        glUniformMatrix4fv(u_pos, 1, false, glm::value_ptr(t));
+        glUniformMatrix4fv(u_size, 1, false, glm::value_ptr(s));
+
+        glUniform4fv(u_color, 1, glm::value_ptr(glm::vec4(0.3f)));
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    }
+
+    Container::~Container()
+    {
+        Container::currentContainer = this->parent;
+    }
+
+    Container* Container::Current()
+    {
+        return Container::currentContainer;
+    }
+
+    glm::vec2 Container::GetChildPosition(int w, int h)
+    {
+        if (Container::currentContainer != nullptr)
+        {
+            auto c = Container::currentContainer;
+            c->positionNextChild += c->margin;
+            auto originalpos = c->positionNextChild;
+
+            if (c->directionHorizontal)
+            {
+                c->positionNextChild += w;
+                return glm::vec2(originalpos, float(c->height - h) / 2.0f);
+            }
+            else
+            {
+                c->positionNextChild += h;
+                return glm::vec2(float(c->width - w) / 2.0f, originalpos);
+            }
+        }
+
+        return glm::vec2(0, 0);
+    }
+
+    bool DoButton(sUIID id, const std::string& text)
+    {
+        auto bounds = monaco.TextBounds(text);
+        auto textwidth = bounds.z - bounds.x;
+        auto pos = Container::GetChildPosition(textwidth, monaco.fontsize);
+
+        if (uistate.mousex >= pos.x && uistate.mousex <= (pos.x+textwidth)
+                && uistate.mousey >= pos.y && uistate.mousey <= (pos.y+monaco.fontsize))
         {
             uistate.hot = id;
             if (uistate.active == sUIID(0) && uistate.mousebuttonsdown)
@@ -209,26 +319,69 @@ namespace im
         glVertexAttribPointer(GLuint(a_vertex), 3, GL_FLOAT, GL_FALSE, 0, vertices);
 
         auto ortho = glm::ortho(0.0f, float(uistate.windowx), float(uistate.windowy), 0.0f, -10.0f, 10.0f);
-        auto t = glm::translate(glm::mat4(1.0f), glm::vec3(rect.x, rect.y, 0.0f));
-        auto s = glm::scale(glm::mat4(1.0f), glm::vec3(rect.z, rect.w, 0.0f));
+        auto t = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
+        auto s = glm::scale(glm::mat4(1.0f), glm::vec3(textwidth, monaco.fontsize, 0.0f));
 
         glUniformMatrix4fv(u_proj, 1, false, glm::value_ptr(ortho));
         glUniformMatrix4fv(u_pos, 1, false, glm::value_ptr(t));
         glUniformMatrix4fv(u_size, 1, false, glm::value_ptr(s));
 
+        glm::vec4 color = glm::vec4(1.0f);
         if (id == uistate.active)
-            glUniform4fv(u_color, 1, glm::value_ptr(glm::vec4(1.0f, 0.0f, 0.0f, 1.0f)));
+            color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
         else if (id == uistate.hot)
-            glUniform4fv(u_color, 1, glm::value_ptr(glm::vec4(1.0f, 0.8f, 0.5f, 1.0f)));
-        else
-            glUniform4fv(u_color, 1, glm::value_ptr(glm::vec4(1.0f)));
+            color = glm::vec4(1.0f, 0.8f, 0.5f, 1.0f);
+
+        glUniform4fv(u_color, 1, glm::value_ptr(glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
 
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        auto bounds = monaco.TextBounds(text);
-        auto textwidth = bounds.z - bounds.x;
-        auto ft = glm::translate(ortho, glm::vec3(rect.x + (rect.z - textwidth)/2.0f, rect.y + monaco.fontsize, 0.0f));
-        monaco.PrintText(ft, text, glm::vec4(0.0f));
+        auto ft = glm::translate(ortho, glm::vec3(pos.x, pos.y + monaco.fontsize, 0.0f));
+        monaco.PrintText(ft, text, color);
+
+        if (uistate.mousebuttonsdown == 0 && uistate.hot == id && uistate.active == id)
+            return true;
+
+        return false;
+    }
+
+    bool DoIconButton(sUIID id, int iconcode)
+    {
+        Icon icon = materialicons.InitIcon(iconcode);
+        auto pos = Container::GetChildPosition(icon.w, icon.h);
+        if (uistate.mousex >= pos.x && uistate.mousex <= (pos.x+icon.w)
+                && uistate.mousey >= pos.y && uistate.mousey <= (pos.y+icon.h))
+        {
+            uistate.hot = id;
+            if (uistate.active == sUIID(0) && uistate.mousebuttonsdown)
+                uistate.active = id;
+        }
+
+        glUseProgram(iProgram);
+
+        glEnableVertexAttribArray(GLuint(a_vertex));
+        glVertexAttribPointer(GLuint(a_vertex), 3, GL_FLOAT, GL_FALSE, 0, vertices);
+
+        auto ortho = glm::ortho(0.0f, float(uistate.windowx), float(uistate.windowy), 0.0f, -10.0f, 10.0f);
+        auto t = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
+        auto s = glm::scale(glm::mat4(1.0f), glm::vec3(icon.w, icon.h, 0.0f));
+
+        glUniformMatrix4fv(u_proj, 1, false, glm::value_ptr(ortho));
+        glUniformMatrix4fv(u_pos, 1, false, glm::value_ptr(t));
+        glUniformMatrix4fv(u_size, 1, false, glm::value_ptr(s));
+
+        glm::vec4 color = glm::vec4(1.0f);
+        if (id == uistate.active)
+            color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+        else if (id == uistate.hot)
+            color = glm::vec4(1.0f, 0.8f, 0.5f, 1.0f);
+
+        glUniform4fv(u_color, 1, glm::value_ptr(color));
+
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        auto ft = glm::translate(ortho, glm::vec3(pos.x, pos.y, 0.0f));
+        materialicons.PrintIcon(ft, iconcode, glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
 
         if (uistate.mousebuttonsdown == 0 && uistate.hot == id && uistate.active == id)
             return true;
@@ -257,7 +410,7 @@ bool glinit()
         std::cout << "Failed to load monaco"<< std::endl;
     }
 
-    if (materialicons.Init("../sickle/MaterialIcons-Regular.ttf", 150.0f) == false)
+    if (materialicons.Init("../sickle/MaterialIcons-Regular.ttf", 75.0f) == false)
     {
         std::cout << "Failed to load MaterialIcons"<< std::endl;
     }
@@ -276,26 +429,29 @@ void glloop()
 
     im::StartFrame();
 
-    if (im::Click(im::Button("newtest").Text("Bladie bla").Position(25, 25)))
+    if (im::Container c = { 100, -1, false, 10 })
     {
-        std::cout << "im::Click @ " << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
+        if (im::DoButton(im::sUIID("test"), "Test"))
+        {
+            std::cout << "clicked test " << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
+        }
+        if (im::DoButton(im::sUIID("teste"), "Testsdfasd"))
+        {
+            std::cout << "clicked teste" << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
+        }
+        if (im::DoIconButton(im::sUIID("testicon"), 0xe001))
+        {
+            std::cout << "clicked testicon" << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
+        }
     }
 
-    if (im::DoButton(im::sUIID("test"), "Test", glm::vec4(25.0f, 65.0f, 180.0f, 25.0f)))
-    {
-        std::cout << "clicked test " << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
-    }
-    if (im::DoButton(im::sUIID("teste"), "Testsdfasd", glm::vec4(25.0f, 100.0f, 180.0f, 25.0f)))
-    {
-        std::cout << "clicked teste" << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
-    }
     im::EndFrame();
 
-    auto ortho = glm::ortho(0.0f, float (im::uistate.windowx), float (im::uistate.windowy), 0.0f, -10.0f, 10.0f);
-    auto t = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 100.0f, 0.0f));
-    materialicons.PrintIcon(ortho*t, 0xe001);
-    t = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 300.0f, 0.0f));
-    materialicons.PrintIcon(ortho*t, 0xe070);
+//    auto ortho = glm::ortho(0.0f, float (im::uistate.windowx), float (im::uistate.windowy), 0.0f, -10.0f, 10.0f);
+//    auto t = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 100.0f, 0.0f));
+//    materialicons.PrintIcon(ortho*t, 0xe001);
+//    t = glm::translate(glm::mat4(1.0f), glm::vec3(100.0f, 300.0f, 0.0f));
+//    materialicons.PrintIcon(ortho*t, 0xe070);
 }
 
 int main(int argc, char *argv[])

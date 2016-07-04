@@ -20,13 +20,13 @@ class Iconset {
     stbtt_fontinfo font;
     stbtt_bakedchar *cdata;
     static std::map<int, Icon> loadedIcons;
-    Icon InitIcon(int c);
 
 public:
     Iconset();
     virtual ~ Iconset();
 
     bool Init(const std::string & fontname, float size);
+    Icon InitIcon(int c);
     void PrintIcon(const glm::mat4& ortho, int c, const glm::vec4& color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
 
     float fontsize;
