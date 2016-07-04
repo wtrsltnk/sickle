@@ -216,25 +216,28 @@ namespace im
         int positionNextChild;
         Container* parent;
     public:
-        Container(int w, int h, bool horizontal = true, int margin = 5);
+        Container(bool visible, int w, int h, bool horizontal = true, int margin = 5);
         virtual ~Container();
         static glm::vec2 GetChildPosition(int w, int h);
         static Container* Current();
 
+        bool visible;
         bool directionHorizontal;
         int width;
         int height;
         int margin;
 
-        operator bool () { return true; }
+        operator bool () { return visible; }
     };
 
     Container* Container::currentContainer = nullptr;
 
-    Container::Container(int w, int h, bool horizontal, int m)
-        : width(w), height(h), directionHorizontal(horizontal), margin(m),
+    Container::Container(bool v, int w, int h, bool horizontal, int m)
+        : visible(v), width(w), height(h), directionHorizontal(horizontal), margin(m),
           parent(Container::currentContainer), positionNextChild(0)
     {
+        if (!this->visible) return;
+
         auto pos = Container::GetChildPosition(w, h);
 
         if (parent == nullptr)
@@ -262,7 +265,7 @@ namespace im
         glUniformMatrix4fv(u_pos, 1, false, glm::value_ptr(t));
         glUniformMatrix4fv(u_size, 1, false, glm::value_ptr(s));
 
-        glUniform4fv(u_color, 1, glm::value_ptr(glm::vec4(0.3f)));
+        glUniform4fv(u_color, 1, glm::value_ptr(glm::vec4(0.3f, 0.3f, 0.3f, 1.0f)));
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
@@ -287,12 +290,12 @@ namespace im
             if (c->directionHorizontal)
             {
                 c->positionNextChild += w;
-                return glm::vec2(originalpos, float(c->height - h) / 2.0f);
+                return glm::vec2(originalpos, c->margin);
             }
             else
             {
                 c->positionNextChild += h;
-                return glm::vec2(float(c->width - w) / 2.0f, originalpos);
+                return glm::vec2(c->margin, originalpos);
             }
         }
 
@@ -332,9 +335,9 @@ namespace im
         else if (id == uistate.hot)
             color = glm::vec4(1.0f, 0.8f, 0.5f, 1.0f);
 
-        glUniform4fv(u_color, 1, glm::value_ptr(glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
+        glUniform4fv(u_color, 1, glm::value_ptr(color));
 
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+//        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
         auto ft = glm::translate(ortho, glm::vec3(pos.x, pos.y + monaco.fontsize, 0.0f));
         monaco.PrintText(ft, text, color);
@@ -376,12 +379,12 @@ namespace im
         else if (id == uistate.hot)
             color = glm::vec4(1.0f, 0.8f, 0.5f, 1.0f);
 
-        glUniform4fv(u_color, 1, glm::value_ptr(color));
+        glUniform4fv(u_color, 1, glm::value_ptr(glm::vec4(0.5f, 0.5f, 0.5f, 1.0f)));
 
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+//        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
         auto ft = glm::translate(ortho, glm::vec3(pos.x, pos.y, 0.0f));
-        materialicons.PrintIcon(ft, iconcode, glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
+        materialicons.PrintIcon(ft, iconcode, color);
 
         if (uistate.mousebuttonsdown == 0 && uistate.hot == id && uistate.active == id)
             return true;
@@ -410,7 +413,7 @@ bool glinit()
         std::cout << "Failed to load monaco"<< std::endl;
     }
 
-    if (materialicons.Init("../sickle/MaterialIcons-Regular.ttf", 75.0f) == false)
+    if (materialicons.Init("../sickle/MaterialIcons-Regular.ttf", 48.0f) == false)
     {
         std::cout << "Failed to load MaterialIcons"<< std::endl;
     }
@@ -423,25 +426,40 @@ void glresize(int width, int height)
     glViewport(0, 0, width, height);
 }
 
+// https://design.google.com/icons/
+
+bool showSidebar = false;
 void glloop()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     im::StartFrame();
 
-    if (im::Container c = { 100, -1, false, 10 })
+    if (im::Container c = { true, -1, 64, true, 16 })
     {
-        if (im::DoButton(im::sUIID("test"), "Test"))
+        if (im::DoIconButton(im::sUIID("menu"), 0xe5d2))
         {
-            std::cout << "clicked test " << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
-        }
-        if (im::DoButton(im::sUIID("teste"), "Testsdfasd"))
-        {
-            std::cout << "clicked teste" << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
-        }
-        if (im::DoIconButton(im::sUIID("testicon"), 0xe001))
-        {
+            showSidebar = true;
             std::cout << "clicked testicon" << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
+        }
+    }
+    if (im::Container c = { showSidebar, 300, -1, false, 10 })
+    {
+        if (im::DoButton(im::sUIID("newfile"), "New"))
+        {
+        }
+        if (im::DoButton(im::sUIID("openfile"), "Open"))
+        {
+        }
+        if (im::DoButton(im::sUIID("savefile"), "Save"))
+        {
+        }
+        if (im::DoButton(im::sUIID("savefileas"), "Save as..."))
+        {
+        }
+        if (im::DoButton(im::sUIID("cancel"), "Cancel"))
+        {
+            showSidebar = false;
         }
     }
 
@@ -539,12 +557,22 @@ int main(int argc, char *argv[])
                 im::uistate.mousex = event.button.x;
                 im::uistate.mousey = event.button.y;
             }
+            else if (event.type == SDL_KEYUP)
+            {
+                if (event.key.keysym.sym == SDLK_ESCAPE)
+                {
+                    if (showSidebar)
+                        showSidebar = false;
+                    else
+                        run = false;
+                }
+            }
         }
         glloop();
         SDL_GL_SwapWindow(window);
 
-        const Uint8 *state = SDL_GetKeyboardState(nullptr);
-        run = !state[SDL_SCANCODE_ESCAPE];
+//        const Uint8 *state = SDL_GetKeyboardState(nullptr);
+//        run = !state[SDL_SCANCODE_ESCAPE];
     }
 
     SDL_GL_DeleteContext(context);
