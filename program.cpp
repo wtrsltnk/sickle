@@ -218,7 +218,7 @@ namespace im
     public:
         Container(bool visible, int w, int h, bool horizontal = true, int margin = 5);
         virtual ~Container();
-        static glm::vec2 GetChildPosition(int w, int h);
+        static glm::vec2 GetChildPosition(int w, int h, bool isicon = false);
         static Container* Current();
 
         bool visible;
@@ -239,6 +239,11 @@ namespace im
         if (!this->visible) return;
 
         auto pos = Container::GetChildPosition(w, h);
+
+        if (this->directionHorizontal)
+            this->positionNextChild += pos.y;
+        else
+            this->positionNextChild += pos.x;
 
         if (parent == nullptr)
         {
@@ -279,23 +284,25 @@ namespace im
         return Container::currentContainer;
     }
 
-    glm::vec2 Container::GetChildPosition(int w, int h)
+    glm::vec2 Container::GetChildPosition(int w, int h, bool isicon)
     {
         if (Container::currentContainer != nullptr)
         {
             auto c = Container::currentContainer;
             c->positionNextChild += c->margin;
-            auto originalpos = c->positionNextChild;
+            auto pos = c->positionNextChild;
 
             if (c->directionHorizontal)
             {
                 c->positionNextChild += w;
-                return glm::vec2(originalpos, c->margin);
+                if (isicon) return glm::vec2(pos, float(c->height - h) / 2.0f);
+                return glm::vec2(pos, c->margin);
             }
             else
             {
                 c->positionNextChild += h;
-                return glm::vec2(c->margin, originalpos);
+                if (isicon) return glm::vec2(float(c->width - w) / 2.0f, pos);
+                return glm::vec2(c->margin, pos);
             }
         }
 
@@ -351,7 +358,7 @@ namespace im
     bool DoIconButton(sUIID id, int iconcode)
     {
         Icon icon = materialicons.InitIcon(iconcode);
-        auto pos = Container::GetChildPosition(icon.w, icon.h);
+        auto pos = Container::GetChildPosition(icon.w, icon.h, true);
         if (uistate.mousex >= pos.x && uistate.mousex <= (pos.x+icon.w)
                 && uistate.mousey >= pos.y && uistate.mousey <= (pos.y+icon.h))
         {
@@ -435,12 +442,55 @@ void glloop()
 
     im::StartFrame();
 
-    if (im::Container c = { true, -1, 64, true, 16 })
+    if (im::Container m = { true, -1, -1, true, 16 })
     {
-        if (im::DoIconButton(im::sUIID("menu"), 0xe5d2))
+        if (im::Container c1 = { true, -1, 64, true, 16 })
         {
-            showSidebar = true;
-            std::cout << "clicked testicon" << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
+            if (im::DoIconButton(im::sUIID("menu"), 0xe5d2))
+            {
+                showSidebar = true;
+                std::cout << "clicked testicon" << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
+            }
+        }
+        if (im::Container c2 = { !showSidebar, 64, -1, false, 16 })
+        {
+            if (im::DoIconButton(im::sUIID("menu"), 0xe913))
+            {
+                showSidebar = true;
+                std::cout << "clicked testicon" << im::uistate.mousex << "," << im::uistate.mousey << std::endl;
+            }
+            if (im::DoIconButton(im::sUIID("zoom"), 0xe8ff))
+            {
+                std::cout << "zoom tool" << std::endl;
+            }
+            if (im::DoIconButton(im::sUIID("camera"), 0xe04b))
+            {
+                std::cout << "camera tool" << std::endl;
+            }
+            if (im::DoIconButton(im::sUIID("entity"), 0xe7fe))
+            {
+                std::cout << "entity tool" << std::endl;
+            }
+            if (im::DoIconButton(im::sUIID("block"), 0xe150))
+            {
+                std::cout << "block tool" << std::endl;
+            }
+            if (im::DoIconButton(im::sUIID("texture"), 0xe3ae))
+            {
+                std::cout << "texture tool" << std::endl;
+            }
+            if (im::DoIconButton(im::sUIID("decal"), 0xe031))
+            {
+                std::cout << "decal tool" << std::endl;
+            }
+            if (im::DoIconButton(im::sUIID("clip"), 0xe14e))
+            {
+                std::cout << "clip tool" << std::endl;
+            }
+            if (im::DoIconButton(im::sUIID("vertex"), 0xe25e))
+            {
+                std::cout << "vertex tool" << std::endl;
+            }
         }
     }
     if (im::Container c = { showSidebar, 300, -1, false, 10 })
